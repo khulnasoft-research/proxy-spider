@@ -16,8 +16,7 @@ pub static PROXY_REGEX: LazyLock<fancy_regex::Regex> = LazyLock::new(|| {
 static IPV4_REGEX: LazyLock<fancy_regex::Regex> = LazyLock::new(|| {
     let pattern = r"^\s*(?P<host>(?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(?:\.(?:[0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])){3})(?::(?:[0-9]|[1-9][0-9]{1,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?\s*$";
     #[expect(clippy::unwrap_used)]
-    fancy_regex::Regex::new(pattern)
-        .unwrap()
+    fancy_regex::Regex::new(pattern).unwrap()
 });
 
 /// Extract an IPv4 address (without port) from a string, if one is found.
@@ -138,11 +137,10 @@ mod tests {
 
     #[test]
     fn test_proxy_regex_multiple_proxies_in_text() {
-        let text = "http://1.2.3.4:80\nhttps://5.6.7.8:443\nsocks5://9.10.11.12:1080";
-        let captures: Vec<_> = PROXY_REGEX
-            .captures_iter(text)
-            .filter_map(|c| c.ok())
-            .collect();
+        let text =
+            "http://1.2.3.4:80\nhttps://5.6.7.8:443\nsocks5://9.10.11.12:1080";
+        let captures: Vec<_> =
+            PROXY_REGEX.captures_iter(text).filter_map(|c| c.ok()).collect();
         assert_eq!(captures.len(), 3);
     }
 
@@ -169,27 +167,21 @@ mod tests {
         assert_eq!(parse_ipv4("192.168.1.1"), Some("192.168.1.1".into()));
         assert_eq!(parse_ipv4("8.8.8.8"), Some("8.8.8.8".into()));
         assert_eq!(parse_ipv4("0.0.0.0"), Some("0.0.0.0".into()));
-        assert_eq!(parse_ipv4("255.255.255.255"), Some("255.255.255.255".into()));
+        assert_eq!(
+            parse_ipv4("255.255.255.255"),
+            Some("255.255.255.255".into())
+        );
     }
 
     #[test]
     fn test_parse_ipv4_with_port() {
-        assert_eq!(
-            parse_ipv4("192.168.1.1:8080"),
-            Some("192.168.1.1".into())
-        );
+        assert_eq!(parse_ipv4("192.168.1.1:8080"), Some("192.168.1.1".into()));
     }
 
     #[test]
     fn test_parse_ipv4_with_whitespace() {
-        assert_eq!(
-            parse_ipv4("  192.168.1.1  "),
-            Some("192.168.1.1".into())
-        );
-        assert_eq!(
-            parse_ipv4("\t10.0.0.1\n"),
-            Some("10.0.0.1".into())
-        );
+        assert_eq!(parse_ipv4("  192.168.1.1  "), Some("192.168.1.1".into()));
+        assert_eq!(parse_ipv4("\t10.0.0.1\n"), Some("10.0.0.1".into()));
     }
 
     #[test]

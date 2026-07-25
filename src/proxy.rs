@@ -95,7 +95,8 @@ impl Proxy {
         self.timeout.is_some()
     }
 
-    /// Test this proxy by making a request through it to the configured check URL.
+    /// Test this proxy by making a request through it to the configured check
+    /// URL.
     ///
     /// On success, sets `timeout` to the response latency and attempts to
     /// extract the exit IP from the response body.
@@ -171,8 +172,7 @@ impl Proxy {
         s.push_str(&self.host);
         s.push(':');
         #[expect(clippy::unwrap_used)]
-        write!(s, "{}", self.port)
-            .unwrap();
+        write!(s, "{}", self.port).unwrap();
 
         s
     }

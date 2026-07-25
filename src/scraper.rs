@@ -1,5 +1,4 @@
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use color_eyre::eyre::{OptionExt as _, WrapErr as _};
 use foldhash::HashSetExt as _;

@@ -252,10 +252,10 @@ where
     clippy::unwrap_used
 )]
 mod tests {
-    use super::*;
-    use crate::proxy::ProxyType;
-    use crate::config;
     use foldhash::HashMapExt as _;
+
+    use super::*;
+    use crate::{config, proxy::ProxyType};
 
     fn make_proxy(
         protocol: ProxyType,
@@ -276,14 +276,29 @@ mod tests {
 
     #[test]
     fn test_compare_timeout_some_first() {
-        let a = make_proxy(ProxyType::Http, "1.2.3.4", 80, Some(Duration::from_millis(100)));
-        let b = make_proxy(ProxyType::Http, "5.6.7.8", 80, Some(Duration::from_millis(200)));
+        let a = make_proxy(
+            ProxyType::Http,
+            "1.2.3.4",
+            80,
+            Some(Duration::from_millis(100)),
+        );
+        let b = make_proxy(
+            ProxyType::Http,
+            "5.6.7.8",
+            80,
+            Some(Duration::from_millis(200)),
+        );
         assert_eq!(compare_timeout(&a, &b), Ordering::Less);
     }
 
     #[test]
     fn test_compare_timeout_none_sorts_last() {
-        let a = make_proxy(ProxyType::Http, "1.2.3.4", 80, Some(Duration::from_millis(100)));
+        let a = make_proxy(
+            ProxyType::Http,
+            "1.2.3.4",
+            80,
+            Some(Duration::from_millis(100)),
+        );
         let b = make_proxy(ProxyType::Http, "5.6.7.8", 80, None);
         assert_eq!(compare_timeout(&a, &b), Ordering::Less);
     }
@@ -328,9 +343,7 @@ mod tests {
 
     #[test]
     fn test_create_proxy_list_str_without_protocol() {
-        let proxies = vec![
-            make_proxy(ProxyType::Http, "1.2.3.4", 80, None),
-        ];
+        let proxies = vec![make_proxy(ProxyType::Http, "1.2.3.4", 80, None)];
         let result = create_proxy_list_str(&proxies, false);
         assert_eq!(result, "1.2.3.4:80");
     }

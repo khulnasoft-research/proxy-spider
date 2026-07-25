@@ -14,7 +14,8 @@ use crate::{
 /// Application directory name used for cache and data paths.
 pub const APP_DIRECTORY_NAME: &str = "proxy_spider";
 
-/// Response format for httpbin-style check URLs that return `{"origin": "<ip>"}`.
+/// Response format for httpbin-style check URLs that return `{"origin":
+/// "<ip>"}`.
 #[derive(serde::Deserialize)]
 pub struct HttpbinResponse {
     pub origin: String,
@@ -34,7 +35,8 @@ pub struct ScrapingConfig {
     pub connect_timeout: Duration,
     pub proxy: Option<url::Url>,
     pub user_agent: String,
-    /// Rate limit delay in milliseconds between scraping requests to each source.
+    /// Rate limit delay in milliseconds between scraping requests to each
+    /// source.
     pub rate_limit_ms: u64,
     pub sources: HashMap<ProxyType, Vec<Arc<Source>>>,
 }

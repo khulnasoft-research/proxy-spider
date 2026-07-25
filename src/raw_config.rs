@@ -9,9 +9,7 @@ use serde::Deserialize as _;
 
 use crate::{HashMap, http::BasicAuth};
 
-fn validate_positive_f64<'de, D>(
-    deserializer: D,
-) -> Result<f64, D::Error>
+fn validate_positive_f64<'de, D>(deserializer: D) -> Result<f64, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -107,7 +105,8 @@ pub struct ScrapingConfig {
     #[serde(deserialize_with = "validate_proxy_url")]
     pub proxy: Option<url::Url>,
     pub user_agent: String,
-    /// Delay in milliseconds between scraping requests to each source (0 = no delay).
+    /// Delay in milliseconds between scraping requests to each source (0 = no
+    /// delay).
     #[serde(default)]
     pub rate_limit_ms: u64,
 
@@ -157,9 +156,7 @@ pub struct RawConfig {
 
 #[expect(clippy::missing_trait_methods)]
 impl<'de> serde::Deserialize<'de> for OutputConfig {
-    fn deserialize<D>(
-        deserializer: D,
-    ) -> Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {

@@ -9,9 +9,7 @@ pub async fn is_docker() -> bool {
 
         *CACHE
             .get_or_init(async || {
-                tokio::fs::try_exists("/.dockerenv")
-                    .await
-                    .unwrap_or(false)
+                tokio::fs::try_exists("/.dockerenv").await.unwrap_or(false)
             })
             .await
     }
