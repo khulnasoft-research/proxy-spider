@@ -1,0 +1,68 @@
+name: Auto Scrape
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      check_url:
+        description: Check URL for proxy verification
+        required: false
+        default: ""
+      max_concurrent_checks:
+        description: Max concurrent checks
+        required: false
+        default: "256"
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  scrape:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: beta
+          cache-key: x86_64-unknown-linux-gnu
+      - name: Build
+        run: cargo +beta build --features mimalloc --release --locked
+      - name: Configure
+        run: |
+          if [ -n "${{ inputs.check_url }}" ]; then
+            sed -i 's|check_url = ".*"|check_url = "${{ inputs.check_url }}"|' config.toml
+          fi
+          if [ -n "${{ inputs.max_concurrent_checks }}" ]; then
+            sed -i 's|max_concurrent_checks = [0-9]*|max_concurrent_checks = ${{ inputs.max_concurrent_checks }}|' config.toml
+          fi
+      - name: Run proxy-spider
+        run: ./target/release/proxy-spider
+        env:
+          PROXY_SCRAPER_CHECKER_CONFIG: config.toml
+      - name: Prepare output
+        run: |
+          mkdir -p dist
+          cp -r out/* dist/
+          echo "Scraped at $(date -u -Iseconds)" > dist/timestamp.txt
+          echo "${{ github.sha }}" > dist/commit.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proxy-list
+          path: dist/
+          if-no-files-found: error
+      - name: Create Release
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifactErrorsFailBuild: true
+          artifacts: "dist/*"
+          replacesArtifacts: true
+          body: "Auto-scraped proxy list - $(date -u -Iseconds)"
+          makeLatest: true
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
+          prerelease: true
+          tag: nightly

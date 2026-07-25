@@ -4,6 +4,8 @@ on:
     branches:
       - main
   pull_request:
+  schedule:
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -410,7 +412,8 @@ jobs:
           target: ${{ matrix.target }}
           components: clippy
           cache-key: x86_64-unknown-linux-gnu
-      - run: cargo +beta clippy --all-targets ${{ matrix.features }}
+      - run: cargo +beta clippy --all-targets ${{ matrix.features }} --deny clippy::all --deny clippy::pedantic --deny clippy::nursery --deny clippy::cargo
+      - run: cargo +beta test ${{ matrix.features }}
   pre-commit:
     runs-on: ubuntu-24.04
     steps:
