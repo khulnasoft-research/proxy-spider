@@ -131,17 +131,16 @@ async fn scrape_one(
 
     drop(source);
 
+    let mut guard = proxies.lock();
+    guard.extend(new_proxies);
+
     #[cfg(feature = "tui")]
-    {
-        let mut proxies = proxies.lock();
-        proxies.extend(new_proxies);
-        for proto in seen_protocols {
-            let count = proxies.iter().filter(|p| p.protocol == proto).count();
-            drop(tx.send(Event::App(AppEvent::TotalProxies(proto, count))));
-        }
+    for proto in seen_protocols {
+        let count = guard.iter().filter(|p| p.protocol == proto).count();
+        drop(tx.send(Event::App(AppEvent::TotalProxies(proto, count))));
     }
-    #[cfg(not(feature = "tui"))]
-    proxies.lock().extend(new_proxies);
+
+    drop(guard);
 
     Ok(())
 }
