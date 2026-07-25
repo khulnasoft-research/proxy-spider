@@ -412,7 +412,7 @@ jobs:
           target: ${{ matrix.target }}
           components: clippy
           cache-key: x86_64-unknown-linux-gnu
-      - run: cargo +beta clippy --all-targets ${{ matrix.features }} --deny clippy::all --deny clippy::pedantic --deny clippy::nursery --deny clippy::cargo
+      - run: cargo +beta clippy --all-targets ${{ matrix.features }} -- --deny clippy::all --deny clippy::pedantic --deny clippy::nursery --deny clippy::cargo
       - run: cargo +beta test ${{ matrix.features }}
   pre-commit:
     runs-on: ubuntu-24.04
