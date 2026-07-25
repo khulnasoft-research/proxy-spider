@@ -146,7 +146,8 @@ fn draw(f: &mut Frame<'_>, state: &AppState, logger_state: &TuiWidgetState) {
     let outer_block = Block::default()
         .title("https://github.com/threatcode/proxy-spider")
         .title_alignment(Alignment::Center);
-    f.render_widget(outer_block.clone(), f.area());
+    let outer_area = outer_block.inner(f.area());
+    f.render_widget(outer_block, f.area());
     let outer_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -159,8 +160,7 @@ fn draw(f: &mut Frame<'_>, state: &AppState, logger_state: &TuiWidgetState) {
             // Hotkeys
             Constraint::Length(4),
         ])
-        .split(outer_block.inner(f.area()));
-    drop(outer_block);
+        .split(outer_area);
 
     f.render_widget(
         TuiLoggerWidget::default()
@@ -218,13 +218,13 @@ fn draw(f: &mut Frame<'_>, state: &AppState, logger_state: &TuiWidgetState) {
 
     for (i, proxy_type) in proxy_types.into_iter().enumerate() {
         let block = Block::bordered().title(proxy_type.as_str().to_uppercase());
-        f.render_widget(block.clone(), proxies_layout[i]);
+        let inner_area = block.inner(proxies_layout[i]);
+        f.render_widget(block, proxies_layout[i]);
 
         let layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Fill(1); 3])
-            .split(block.inner(proxies_layout[i]));
-        drop(block);
+            .split(inner_area);
 
         let sources_scraped =
             state.sources_scraped.get(proxy_type).copied().unwrap_or_default();
@@ -263,9 +263,6 @@ fn draw(f: &mut Frame<'_>, state: &AppState, logger_state: &TuiWidgetState) {
             layout[1],
         );
 
-        let working_proxies_block = Block::bordered().title("Working proxies");
-        f.render_widget(working_proxies_block.clone(), layout[2]);
-
         let proxies_working =
             state.proxies_working.get(proxy_type).copied().unwrap_or_default();
         f.render_widget(
@@ -278,7 +275,7 @@ fn draw(f: &mut Frame<'_>, state: &AppState, logger_state: &TuiWidgetState) {
                 }
             }))
             .alignment(Alignment::Center),
-            working_proxies_block.inner(layout[2]),
+            Block::bordered().title("Working proxies").inner(layout[2]),
         );
     }
 

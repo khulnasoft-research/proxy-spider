@@ -72,15 +72,16 @@ async fn scrape_one(
     let mut seen_protocols = HashSet::new();
 
     let mut new_proxies = HashSet::new();
+    let max_per_source = config.scraping.max_proxies_per_source;
+    let enabled_protocols: HashSet<ProxyType> =
+        config.enabled_protocols().copied().collect();
 
     for maybe_capture in PROXY_REGEX.captures_iter(&text) {
-        if config.scraping.max_proxies_per_source != 0
-            && new_proxies.len() >= config.scraping.max_proxies_per_source
-        {
+        if max_per_source != 0 && new_proxies.len() >= max_per_source {
             tracing::warn!(
                 "{}: too many proxies (> {}) - skipped",
                 source.url,
-                config.scraping.max_proxies_per_source
+                max_per_source
             );
             return Ok(());
         }
@@ -92,7 +93,7 @@ async fn scrape_one(
             None => proto,
         };
 
-        if config.protocol_is_enabled(protocol) {
+        if enabled_protocols.contains(&protocol) {
             #[cfg(feature = "tui")]
             seen_protocols.insert(protocol);
 
@@ -130,16 +131,17 @@ async fn scrape_one(
 
     drop(source);
 
-    let mut proxies = proxies.lock();
-    proxies.extend(new_proxies);
-
     #[cfg(feature = "tui")]
-    for proto in seen_protocols {
-        let count = proxies.iter().filter(move |p| p.protocol == proto).count();
-        drop(tx.send(Event::App(AppEvent::TotalProxies(proto, count))));
+    {
+        let mut proxies = proxies.lock();
+        proxies.extend(new_proxies);
+        for proto in seen_protocols {
+            let count = proxies.iter().filter(|p| p.protocol == proto).count();
+            drop(tx.send(Event::App(AppEvent::TotalProxies(proto, count))));
+        }
     }
-
-    drop(proxies);
+    #[cfg(not(feature = "tui"))]
+    proxies.lock().extend(new_proxies);
 
     Ok(())
 }

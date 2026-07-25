@@ -1,95 +1,83 @@
-# Enable debug logging (shows detailed checking process)
-# Warning: Produces very verbose output
+# Enable debug-level logging (very verbose — shows detailed per-proxy checking
+# output, useful for troubleshooting source parsing or check failures).
 debug = false
 
-
 [scraping]
-# Maximum proxies to collect per source (0 = unlimited)
-# Helps skip unreliable sources with too many proxies
+# Maximum proxies to collect per source URL (0 = unlimited).
+# Set lower to skip unreliable sources that yield many bad proxies.
 max_proxies_per_source = 100000
 
-# Request timeout for fetching proxy sources (seconds)
-# Higher values may find more sources but take longer
+# Per-request timeout and TCP connect timeout for fetching sources (seconds).
 timeout = 60.0
 connect_timeout = 5.0
 
-# HTTP(S),SOCKS4 or SOCKS5 proxy used for fetching sources (e.g., "socks5://user:pass@host:port"). Leave empty to disable.
+# Optional proxy for scraping requests (e.g. "socks5://user:pass@host:port").
+# Supports http, https, socks4, socks5 schemes. Leave empty to connect directly.
 proxy = ""
 
-# User-Agent header for scraping requests
+# User-Agent header sent when fetching source lists.
 user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 
+# Minimum delay (milliseconds) between consecutive requests to the same source.
+# Useful when a source may rate-limit or ban aggressive scrapers. 0 = no delay.
+rate_limit_ms = 0
 
 [checking]
-# URL for checking proxy functionality
-# httpbin-compatible: Returns JSON with IP info for ASN/geo data
-# plain-text: Returns just IP address for basic connectivity
-# Examples:
-#   "https://httpbin.org/ip" - JSON with "origin" key. Full featured checking.
-#   "https://api.ipify.org"  - Simple IP return. Full featured checking.
-#   "https://google.com"     - Basic connect/read check
-#   ""                       - Skip checking (scrape only)
+# URL used to verify each proxy works.
+#
+# Different URL types provide different levels of detail:
+#   JSON (httpbin-compatible)  — returns {"origin":"<ip>"}. Enables ASN/geo metadata.
+#   Plain IP (e.g. api.ipify)  — returns raw IP. Full functionality.
+#   Any site (e.g. google.com) — basic connect/read check only.
+#   "" (empty)                 — skip checking entirely (scrape only).
 check_url = "https://api.ipify.org"
 
-# Concurrent proxy checks (adjust based on RAM/network capacity)
-# Start low and increase gradually if system handles it well
+# Maximum concurrent proxy checks. Tune based on available RAM/network capacity
+# and OS file-descriptor limits (the tool will warn and cap automatically).
 max_concurrent_checks = 1024
 
-# Proxy response timeout (seconds)
-# Higher = more working proxies found, slower checking
-# Lower = faster checking, may miss slower proxies
+# Per-proxy response timeout and TCP connect timeout (seconds).
+# Longer timeouts find more working proxies but take longer to finish.
 timeout = 60.0
 connect_timeout = 5.0
 
-# User-Agent header for proxy check requests
+# User-Agent header sent from the proxy under test to the check URL.
 user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 
-
 [output]
-# Output directory (Docker ignores this setting)
+# Output directory. Ignored when running inside Docker
+# (uses $XDG_DATA_HOME/proxy_spider or OS equivalent instead).
 path = "./out"
 
-# Sort by response time (true) or IP address (false)
+# Sort proxies by response time (true) or by IP address (false).
 sort_by_speed = true
 
-
-# Plain text output (.txt files)
 [output.txt]
 enabled = true
 
-
-# JSON output with metadata (.json files)
 [output.json]
 enabled = true
 
-# Add ASN (network provider) info to JSON output
-# Uses offline MaxMind database
+# Embed ASN (network provider / ISP) into JSON output.
+# Requires an offline MaxMind ASN database (auto-downloaded on first run).
 include_asn = true
 
-# Add geolocation (country/city) info to JSON output
-# Uses offline MaxMind database
+# Embed geolocation (country / city) into JSON output.
+# Requires an offline MaxMind GeoIP database (auto-downloaded on first run).
 include_geolocation = true
 
-
-# Proxy sources configuration
-# Add local files: ["./my_proxies.txt"] or URLs
-# Sources are fetched in parallel for speed
+# ── Proxy sources ─────────────────────────────────────────────────────────────
+# Each protocol section lists URLs (or local file paths) to scrape for proxies.
+# URLs are fetched in parallel for speed.
+#
+# URL formats:
+#   Simple string         — "./my_proxies.txt"
+#   With basic auth       — { url = "…", basic_auth = { username = "u", password = "p" } }
+#   With custom headers   — { url = "…", headers = { Authorization = "Bearer …" } }
 
 [scraping.http]
 enabled = true
 urls = [
-    # Local file examples:
-    # "./my_http_proxies.txt",
-    # "/home/user/my_http_proxies.txt",
-    # "C:/Users/user/Desktop/my_http_proxies.txt",
-    # "file:///home/user/my_http_proxies.txt",
-
-    # Advanced URL configuration examples (with basic auth or custom headers):
-    # HTTP Basic Auth example:
-    # { url = "https://some.api/endpoint", basic_auth = { username = "user", password = "password123" } },
-    # Custom headers example:
-    # { url = "https://some.api/endpoint", headers = { Authorization = "Bearer YOUR_API_KEY" } },
-
     "https://api.proxyscrape.com/v3/free-proxy-list/get?request=getproxies&protocol=http",
     "https://api.proxyscrape.com/v3/free-proxy-list/get?request=getproxies&protocol=https",
     "https://raw.githubusercontent.com/proxifly/free-proxy-list/refs/heads/main/proxies/protocols/http/data.txt",
@@ -102,18 +90,6 @@ urls = [
 [scraping.socks4]
 enabled = true
 urls = [
-    # Local file examples:
-    # "./my_socks4_proxies.txt",
-    # "/home/user/my_socks4_proxies.txt",
-    # "C:/Users/user/Desktop/my_socks4_proxies.txt",
-    # "file:///home/user/my_socks4_proxies.txt",
-
-    # Advanced URL configuration examples (with basic auth or custom headers):
-    # HTTP Basic Auth example:
-    # { url = "https://some.api/endpoint", basic_auth = { username = "user", password = "password123" } },
-    # Custom headers example:
-    # { url = "https://some.api/endpoint", headers = { Authorization = "Bearer YOUR_API_KEY" } },
-
     "https://api.proxyscrape.com/v3/free-proxy-list/get?request=getproxies&protocol=socks4",
     "https://raw.githubusercontent.com/proxifly/free-proxy-list/refs/heads/main/proxies/protocols/socks4/data.txt",
     "https://raw.githubusercontent.com/roosterkid/openproxylist/refs/heads/main/SOCKS4_RAW.txt",
@@ -124,18 +100,6 @@ urls = [
 [scraping.socks5]
 enabled = true
 urls = [
-    # Local file examples:
-    # "./my_socks5_proxies.txt",
-    # "/home/user/my_socks5_proxies.txt",
-    # "C:/Users/user/Desktop/my_socks5_proxies.txt",
-    # "file:///home/user/my_socks5_proxies.txt",
-
-    # Advanced URL configuration examples (with basic auth or custom headers):
-    # HTTP Basic Auth example:
-    # { url = "https://some.api/endpoint", basic_auth = { username = "user", password = "password123" } },
-    # Custom headers example:
-    # { url = "https://some.api/endpoint", headers = { Authorization = "Bearer YOUR_API_KEY" } },
-
     "https://api.proxyscrape.com/v3/free-proxy-list/get?request=getproxies&protocol=socks5",
     "https://raw.githubusercontent.com/hookzof/socks5_list/refs/heads/master/proxy.txt",
     "https://raw.githubusercontent.com/proxifly/free-proxy-list/refs/heads/main/proxies/protocols/socks5/data.txt",

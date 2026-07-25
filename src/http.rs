@@ -10,6 +10,7 @@ use crate::config::Config;
 const DEFAULT_MAX_RETRIES: u32 = 2;
 const INITIAL_RETRY_DELAY: Duration = Duration::from_millis(500);
 const MAX_RETRY_DELAY: Duration = Duration::from_secs(8);
+const MAX_RETRY_AFTER: Duration = Duration::from_mins(1);
 
 static RETRY_STATUSES: &[reqwest::StatusCode] = &[
     reqwest::StatusCode::REQUEST_TIMEOUT,
@@ -61,6 +62,8 @@ impl reqwest::dns::Resolve for HickoryDnsResolver {
 }
 
 /// Parse `Retry-After` or `retry-after-ms` header values into a `Duration`.
+#[must_use]
+#[inline]
 fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
     if let Some(val) = headers.get("retry-after-ms")
         && let Ok(s) = val.to_str()
@@ -89,6 +92,7 @@ fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
 ///
 /// Uses `Retry-After` header if present (capped at 60 seconds), otherwise
 /// applies exponential backoff with jitter.
+#[must_use]
 fn calculate_retry_timeout(
     headers: Option<&reqwest::header::HeaderMap>,
     attempt: u32,
@@ -96,7 +100,7 @@ fn calculate_retry_timeout(
     if let Some(h) = headers
         && let Some(after) = parse_retry_after(h)
     {
-        if after > Duration::from_mins(1) {
+        if after > MAX_RETRY_AFTER {
             return None;
         }
         return Some(after);

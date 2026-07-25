@@ -42,6 +42,7 @@ impl FromStr for ProxyType {
 
 impl ProxyType {
     /// Return the string representation of this proxy type.
+    #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Http => "http",
@@ -55,7 +56,7 @@ impl ProxyType {
 ///
 /// Equality and hashing are based on `protocol`, `host`, `port`, `username`,
 /// and `password` only (not `timeout` or `exit_ip`) to allow deduplication.
-#[derive(Eq, Debug)]
+#[derive(Clone, Eq, Debug)]
 pub struct Proxy {
     pub protocol: ProxyType,
     pub host: String,
@@ -66,11 +67,11 @@ pub struct Proxy {
     pub exit_ip: Option<String>,
 }
 
-impl TryFrom<&mut Proxy> for reqwest::Proxy {
+impl TryFrom<&Proxy> for reqwest::Proxy {
     type Error = crate::Error;
 
     #[inline]
-    fn try_from(value: &mut Proxy) -> Result<Self, Self::Error> {
+    fn try_from(value: &Proxy) -> Result<Self, Self::Error> {
         let proxy = Self::all(format!(
             "{}://{}:{}",
             value.protocol.as_str(),
@@ -91,6 +92,7 @@ impl TryFrom<&mut Proxy> for reqwest::Proxy {
 
 impl Proxy {
     /// Whether this proxy has been checked (has a timeout value).
+    #[must_use]
     pub const fn is_checked(&self) -> bool {
         self.timeout.is_some()
     }
@@ -111,7 +113,7 @@ impl Proxy {
         if let Some(check_url) = &config.checking.check_url {
             let builder = reqwest::ClientBuilder::new()
                 .user_agent(&config.checking.user_agent)
-                .proxy(self.try_into()?)
+                .proxy((&*self).try_into()?)
                 .timeout(config.checking.timeout)
                 .connect_timeout(config.checking.connect_timeout)
                 .pool_max_idle_per_host(0)
@@ -129,7 +131,7 @@ impl Proxy {
             let client = builder.build()?;
             let start = Instant::now();
             let response = client
-                .get(check_url.clone())
+                .get(check_url.as_str())
                 .send()
                 .await?
                 .error_for_status()?;
@@ -152,6 +154,7 @@ impl Proxy {
     ///
     /// Example with protocol: `"http://user:pass@1.2.3.4:8080"`
     /// Example without:      `"user:pass@1.2.3.4:8080"`.
+    #[must_use]
     pub fn to_string(&self, include_protocol: bool) -> String {
         let mut s = String::new();
 

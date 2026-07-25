@@ -20,6 +20,7 @@ pub async fn is_docker() -> bool {
 }
 
 /// Format an error chain as a human-readable string with arrows.
+#[must_use]
 pub fn pretty_error(e: &crate::Error) -> String {
     e.chain().join(" \u{2192} ")
 }

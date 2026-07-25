@@ -100,20 +100,24 @@ async fn get_output_path(
 }
 
 impl Config {
+    #[must_use]
     pub const fn asn_enabled(&self) -> bool {
         self.output.json.enabled && self.output.json.include_asn
     }
 
+    #[must_use]
     pub const fn geolocation_enabled(&self) -> bool {
         self.output.json.enabled && self.output.json.include_geolocation
     }
 
+    #[must_use]
     pub fn enabled_protocols(
         &self,
     ) -> hash_map::Keys<'_, ProxyType, Vec<Arc<Source>>> {
         self.scraping.sources.keys()
     }
 
+    #[must_use]
     pub fn protocol_is_enabled(&self, protocol: ProxyType) -> bool {
         self.scraping.sources.contains_key(&protocol)
     }
@@ -123,22 +127,21 @@ impl Config {
     ) -> crate::Result<Self> {
         let output_path = get_output_path(&raw_config).await?;
 
-        let max_concurrent_checks =
-            if let Ok(lim) = rlimit::increase_nofile_limit(u64::MAX) {
+        let requested = raw_config.checking.max_concurrent_checks.get();
+        let max_concurrent_checks = rlimit::increase_nofile_limit(u64::MAX)
+            .map_or(requested, |lim| {
                 let lim = usize::try_from(lim).unwrap_or(usize::MAX);
 
-                if raw_config.checking.max_concurrent_checks.get() > lim {
+                if requested > lim {
                     tracing::warn!(
                         "max_concurrent_checks config value is too high for \
                          your OS. It will be ignored and {lim} will be used."
                     );
                     lim
                 } else {
-                    raw_config.checking.max_concurrent_checks.get()
+                    requested
                 }
-            } else {
-                raw_config.checking.max_concurrent_checks.get()
-            };
+            });
 
         Ok(Self {
             debug: raw_config.debug,

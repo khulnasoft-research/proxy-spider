@@ -1,6 +1,5 @@
 use std::{
     cmp::Ordering,
-    io,
     net::{IpAddr, Ipv4Addr},
     sync::Arc,
     time::Duration,
@@ -17,10 +16,12 @@ use crate::{
     utils::is_docker,
 };
 
+#[must_use]
 fn compare_timeout(a: &Proxy, b: &Proxy) -> Ordering {
     a.timeout.unwrap_or(Duration::MAX).cmp(&b.timeout.unwrap_or(Duration::MAX))
 }
 
+#[must_use]
 fn compare_natural(a: &Proxy, b: &Proxy) -> Ordering {
     a.protocol
         .cmp(&b.protocol)
@@ -93,6 +94,9 @@ pub async fn save_proxies(
 
         let mut proxy_dicts = Vec::with_capacity(proxies.len());
         for proxy in &proxies {
+            let exit_ip_addr: Option<IpAddr> =
+                proxy.exit_ip.as_ref().and_then(|ip| ip.parse::<IpAddr>().ok());
+
             proxy_dicts.push(ProxyJson {
                 protocol: proxy.protocol,
                 username: proxy.username.as_deref(),
@@ -103,63 +107,46 @@ pub async fn save_proxies(
                     .timeout
                     .map(|d| (d.as_secs_f64() * 100.0).round() / 100.0_f64),
                 exit_ip: proxy.exit_ip.as_deref(),
-                asn: if let Some(asn_db) = &maybe_asn_db {
-                    if let Some(exit_ip) = proxy.exit_ip.as_ref() {
-                        let exit_ip_addr: IpAddr = exit_ip.parse().wrap_err(
-                            "failed to parse proxy's exit ip as IpAddr",
-                        )?;
-                        asn_db
-                            .lookup::<maxminddb::geoip2::Asn<'_>>(exit_ip_addr)
-                            .wrap_err_with(move || {
-                                format!(
-                                    "failed to lookup {exit_ip_addr} in ASN \
-                                     database"
-                                )
-                            })?
-                    } else {
-                        None
-                    }
+                asn: if let (Some(asn_db), Some(addr)) =
+                    (maybe_asn_db.as_ref(), exit_ip_addr)
+                {
+                    asn_db
+                        .lookup::<maxminddb::geoip2::Asn<'_>>(addr)
+                        .wrap_err_with(move || {
+                            format!("failed to lookup {addr} in ASN database")
+                        })?
                 } else {
                     None
                 },
-                geolocation: if let Some(geo_db) = &maybe_geo_db {
-                    if let Some(exit_ip) = proxy.exit_ip.as_ref() {
-                        let exit_ip_addr: IpAddr = exit_ip.parse().wrap_err(
-                            "failed to parse proxy's exit ip as IpAddr",
-                        )?;
-                        geo_db
-                            .lookup::<maxminddb::geoip2::City<'_>>(exit_ip_addr)
-                            .wrap_err_with(move || {
-                                format!(
-                                    "failed to lookup {exit_ip_addr} in \
-                                     geolocation database"
-                                )
-                            })?
-                    } else {
-                        None
-                    }
+                geolocation: if let (Some(geo_db), Some(addr)) =
+                    (maybe_geo_db.as_ref(), exit_ip_addr)
+                {
+                    geo_db
+                        .lookup::<maxminddb::geoip2::City<'_>>(addr)
+                        .wrap_err_with(move || {
+                            format!(
+                                "failed to lookup {addr} in geolocation \
+                                 database"
+                            )
+                        })?
                 } else {
                     None
                 },
             });
         }
 
+        let json_value = serde_json::to_value(&proxy_dicts)
+            .wrap_err("failed to serialize proxies to json")?;
         for (path, pretty) in [
             (config.output.path.join("proxies.json"), false),
             (config.output.path.join("proxies_pretty.json"), true),
         ] {
-            match tokio::fs::remove_file(&path).await {
-                Ok(()) => Ok(()),
-                Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
-                Err(e) => Err(e).wrap_err_with(|| {
-                    format!("failed to remove file {}", path.display())
-                }),
-            }?;
+            drop(tokio::fs::remove_file(&path).await);
             let json_data = if pretty {
-                serde_json::to_vec_pretty(&proxy_dicts)
+                serde_json::to_vec_pretty(&json_value)
                     .wrap_err("failed to serialize proxies to pretty json")?
             } else {
-                serde_json::to_vec(&proxy_dicts)
+                serde_json::to_vec(&json_value)
                     .wrap_err("failed to serialize proxies to json")?
             };
             tokio::fs::write(&path, json_data).await.wrap_err_with(
@@ -173,16 +160,7 @@ pub async fn save_proxies(
     if config.output.txt.enabled {
         let grouped_proxies = group_proxies(&config, &proxies);
         let directory_path = config.output.path.join("proxies");
-        match tokio::fs::remove_dir_all(&directory_path).await {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(e).wrap_err_with(|| {
-                format!(
-                    "failed to remove directory {}",
-                    directory_path.display()
-                )
-            }),
-        }?;
+        drop(tokio::fs::remove_dir_all(&directory_path).await);
         tokio::fs::create_dir_all(&directory_path).await.wrap_err_with(
             || {
                 format!(
@@ -193,7 +171,7 @@ pub async fn save_proxies(
         )?;
 
         let text = create_proxy_list_str(proxies.iter(), true);
-        tokio::fs::write(directory_path.join("all.txt"), text)
+        tokio::fs::write(directory_path.join("all.txt"), &text)
             .await
             .wrap_err_with(|| {
                 format!(
@@ -206,7 +184,7 @@ pub async fn save_proxies(
             let text = create_proxy_list_str(proxies, false);
             let mut file_path = directory_path.join(proto.as_str());
             file_path.set_extension("txt");
-            tokio::fs::write(&file_path, text).await.wrap_err_with(
+            tokio::fs::write(&file_path, &text).await.wrap_err_with(
                 move || {
                     format!(
                         "failed to write proxies to {}",
@@ -234,6 +212,7 @@ pub async fn save_proxies(
     Ok(())
 }
 
+#[must_use]
 fn create_proxy_list_str<'a, I>(proxies: I, include_protocol: bool) -> String
 where
     I: IntoIterator<Item = &'a Proxy>,
