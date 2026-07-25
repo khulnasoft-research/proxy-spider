@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use color_eyre::eyre::{OptionExt as _, WrapErr as _};
 use foldhash::HashSetExt as _;
@@ -152,6 +153,7 @@ pub async fn scrape_all(
 ) -> crate::Result<Vec<Proxy>> {
     let proxies = Arc::new(parking_lot::Mutex::new(HashSet::new()));
 
+    let rate_limit = Duration::from_millis(config.scraping.rate_limit_ms);
     let mut join_set = tokio::task::JoinSet::new();
     for (&proto, sources) in &config.scraping.sources {
         #[cfg(feature = "tui")]
@@ -166,6 +168,9 @@ pub async fn scrape_all(
             #[cfg(feature = "tui")]
             let tx = tx.clone();
             join_set.spawn(async move {
+                if !rate_limit.is_zero() {
+                    tokio::time::sleep(rate_limit).await;
+                }
                 tokio::select! {
                     biased;
                     res = scrape_one(

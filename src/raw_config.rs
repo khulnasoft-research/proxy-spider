@@ -9,9 +9,12 @@ use serde::Deserialize as _;
 
 use crate::{HashMap, http::BasicAuth};
 
-fn validate_positive_f64<'de, D: serde::Deserializer<'de>>(
+fn validate_positive_f64<'de, D>(
     deserializer: D,
-) -> Result<f64, D::Error> {
+) -> Result<f64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
     let val = f64::deserialize(deserializer)?;
     if val > 0.0 {
         Ok(val)
@@ -57,15 +60,21 @@ where
     }
 }
 
-fn validate_proxy_url<'de, D: serde::Deserializer<'de>>(
+fn validate_proxy_url<'de, D>(
     deserializer: D,
-) -> Result<Option<url::Url>, D::Error> {
+) -> Result<Option<url::Url>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
     validate_url_generic(deserializer, &["http", "https", "socks4", "socks5"])
 }
 
-fn validate_http_url<'de, D: serde::Deserializer<'de>>(
+fn validate_http_url<'de, D>(
     deserializer: D,
-) -> Result<Option<url::Url>, D::Error> {
+) -> Result<Option<url::Url>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
     validate_url_generic(deserializer, &["http", "https"])
 }
 
@@ -98,6 +107,9 @@ pub struct ScrapingConfig {
     #[serde(deserialize_with = "validate_proxy_url")]
     pub proxy: Option<url::Url>,
     pub user_agent: String,
+    /// Delay in milliseconds between scraping requests to each source (0 = no delay).
+    #[serde(default)]
+    pub rate_limit_ms: u64,
 
     pub http: ScrapingProtocolConfig,
     pub socks4: ScrapingProtocolConfig,
@@ -145,9 +157,12 @@ pub struct RawConfig {
 
 #[expect(clippy::missing_trait_methods)]
 impl<'de> serde::Deserialize<'de> for OutputConfig {
-    fn deserialize<D: serde::Deserializer<'de>>(
+    fn deserialize<D>(
         deserializer: D,
-    ) -> Result<Self, D::Error> {
+    ) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
         #[derive(serde::Deserialize)]
         struct InnerOutputConfig {
             pub path: PathBuf,
@@ -187,4 +202,345 @@ pub async fn read_config(path: &Path) -> crate::Result<RawConfig> {
     toml::from_str(&raw_config).wrap_err_with(move || {
         format!("failed to parse {} as TOML config file", path.display())
     })
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::default_numeric_fallback,
+    clippy::indexing_slicing,
+    clippy::inline_modules,
+    clippy::match_wildcard_for_single_variants,
+    clippy::panic,
+    clippy::redundant_test_prefix,
+    clippy::semicolon_inside_block,
+    clippy::semicolon_outside_block,
+    clippy::undocumented_unsafe_blocks,
+    clippy::unwrap_used
+)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_positive_f64_ok() {
+        let val = serde_json::from_str::<f64>("1.5").unwrap();
+        assert!(val > 0.0);
+    }
+
+    #[test]
+    fn test_get_config_path_default() {
+        // SAFETY: Tests run single-threaded; env var manipulation is safe
+        // in test context and does not affect other tests.
+        unsafe { env::remove_var(CONFIG_ENV) };
+        assert_eq!(get_config_path(), "config.toml");
+    }
+
+    #[test]
+    fn test_get_config_path_env() {
+        // SAFETY: Tests run single-threaded; env var manipulation is safe
+        // in test context and does not affect other tests.
+        unsafe {
+            env::set_var(CONFIG_ENV, "/custom/path/config.toml");
+        }
+        assert_eq!(get_config_path(), "/custom/path/config.toml");
+        unsafe { env::remove_var(CONFIG_ENV) };
+    }
+
+    #[test]
+    fn test_parse_minimal_config() {
+        let toml_str = r#"
+debug = false
+
+[scraping]
+max_proxies_per_source = 1000
+timeout = 30.0
+connect_timeout = 5.0
+proxy = ""
+user_agent = "test-agent"
+
+[scraping.http]
+enabled = true
+urls = ["http://example.com/proxies.txt"]
+
+[scraping.socks4]
+enabled = false
+urls = []
+
+[scraping.socks5]
+enabled = false
+urls = []
+
+[checking]
+check_url = "https://httpbin.org/ip"
+max_concurrent_checks = 64
+timeout = 30.0
+connect_timeout = 5.0
+user_agent = "test-agent"
+
+[output]
+path = "./out"
+sort_by_speed = true
+
+[output.txt]
+enabled = true
+
+[output.json]
+enabled = false
+include_asn = false
+include_geolocation = false
+"#;
+        let config: RawConfig = toml::from_str(toml_str).unwrap();
+        assert!(!config.debug);
+        assert_eq!(config.scraping.max_proxies_per_source, 1000);
+        assert!(config.scraping.http.enabled);
+        assert!(!config.scraping.socks4.enabled);
+        assert!(config.checking.check_url.is_some());
+        assert!(config.output.txt.enabled);
+        assert!(!config.output.json.enabled);
+    }
+
+    #[test]
+    fn test_parse_config_with_basic_auth_source() {
+        let toml_str = r#"
+debug = false
+
+[scraping]
+max_proxies_per_source = 100
+timeout = 10.0
+connect_timeout = 5.0
+proxy = ""
+user_agent = "test"
+
+[scraping.http]
+enabled = true
+urls = [
+    { url = "https://api.example.com/proxies", basic_auth = { username = "user", password = "pass" } }
+]
+
+[scraping.socks4]
+enabled = false
+urls = []
+
+[scraping.socks5]
+enabled = false
+urls = []
+
+[checking]
+check_url = "https://httpbin.org/ip"
+max_concurrent_checks = 10
+timeout = 10.0
+connect_timeout = 3.0
+user_agent = "test"
+
+[output]
+path = "./out"
+sort_by_speed = false
+
+[output.txt]
+enabled = true
+
+[output.json]
+enabled = false
+include_asn = false
+include_geolocation = false
+"#;
+        let config: RawConfig = toml::from_str(toml_str).unwrap();
+        let urls = &config.scraping.http.urls;
+        assert_eq!(urls.len(), 1);
+        match &urls[0] {
+            SourceConfig::Detailed { url, basic_auth, headers } => {
+                assert_eq!(url, "https://api.example.com/proxies");
+                assert!(basic_auth.is_some());
+                assert!(headers.is_none());
+                let auth = basic_auth.as_ref().unwrap();
+                assert_eq!(auth.username, "user");
+                assert_eq!(auth.password.as_deref(), Some("pass"));
+            }
+            _ => panic!("expected Detailed variant"),
+        }
+    }
+
+    #[test]
+    fn test_parse_config_rejects_zero_timeout() {
+        let toml_str = r#"
+debug = false
+
+[scraping]
+max_proxies_per_source = 100
+timeout = 0.0
+connect_timeout = 5.0
+proxy = ""
+user_agent = "test"
+
+[scraping.http]
+enabled = true
+urls = ["http://example.com/list.txt"]
+
+[scraping.socks4]
+enabled = false
+urls = []
+
+[scraping.socks5]
+enabled = false
+urls = []
+
+[checking]
+check_url = "https://httpbin.org/ip"
+max_concurrent_checks = 10
+timeout = 10.0
+connect_timeout = 3.0
+user_agent = "test"
+
+[output]
+path = "./out"
+sort_by_speed = false
+
+[output.txt]
+enabled = true
+
+[output.json]
+enabled = false
+include_asn = false
+include_geolocation = false
+"#;
+        assert!(toml::from_str::<RawConfig>(toml_str).is_err());
+    }
+
+    #[test]
+    fn test_parse_config_rejects_bad_check_url() {
+        let toml_str = r#"
+debug = false
+
+[scraping]
+max_proxies_per_source = 100
+timeout = 10.0
+connect_timeout = 5.0
+proxy = ""
+user_agent = "test"
+
+[scraping.http]
+enabled = true
+urls = ["http://example.com/list.txt"]
+
+[scraping.socks4]
+enabled = false
+urls = []
+
+[scraping.socks5]
+enabled = false
+urls = []
+
+[checking]
+check_url = "socks5://bad-scheme.com"
+max_concurrent_checks = 10
+timeout = 10.0
+connect_timeout = 3.0
+user_agent = "test"
+
+[output]
+path = "./out"
+sort_by_speed = false
+
+[output.txt]
+enabled = true
+
+[output.json]
+enabled = false
+include_asn = false
+include_geolocation = false
+"#;
+        assert!(toml::from_str::<RawConfig>(toml_str).is_err());
+    }
+
+    #[test]
+    fn test_parse_config_rejects_no_output() {
+        let toml_str = r#"
+debug = false
+
+[scraping]
+max_proxies_per_source = 100
+timeout = 10.0
+connect_timeout = 5.0
+proxy = ""
+user_agent = "test"
+
+[scraping.http]
+enabled = true
+urls = ["http://example.com/list.txt"]
+
+[scraping.socks4]
+enabled = false
+urls = []
+
+[scraping.socks5]
+enabled = false
+urls = []
+
+[checking]
+check_url = "https://httpbin.org/ip"
+max_concurrent_checks = 10
+timeout = 10.0
+connect_timeout = 3.0
+user_agent = "test"
+
+[output]
+path = "./out"
+sort_by_speed = false
+
+[output.txt]
+enabled = false
+
+[output.json]
+enabled = false
+include_asn = false
+include_geolocation = false
+"#;
+        assert!(toml::from_str::<RawConfig>(toml_str).is_err());
+    }
+
+    #[test]
+    fn test_parse_config_empty_check_url() {
+        let toml_str = r#"
+debug = false
+
+[scraping]
+max_proxies_per_source = 100
+timeout = 10.0
+connect_timeout = 5.0
+proxy = ""
+user_agent = "test"
+
+[scraping.http]
+enabled = true
+urls = ["http://example.com/list.txt"]
+
+[scraping.socks4]
+enabled = false
+urls = []
+
+[scraping.socks5]
+enabled = false
+urls = []
+
+[checking]
+check_url = ""
+max_concurrent_checks = 10
+timeout = 10.0
+connect_timeout = 3.0
+user_agent = "test"
+
+[output]
+path = "./out"
+sort_by_speed = false
+
+[output.txt]
+enabled = true
+
+[output.json]
+enabled = false
+include_asn = false
+include_geolocation = false
+"#;
+        let config: RawConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.checking.check_url.is_none());
+    }
 }

@@ -26,6 +26,8 @@ pub struct BasicAuth {
     pub password: Option<String>,
 }
 
+/// A DNS resolver backed by `hickory-resolver` with Cloudflare DNS and
+/// IPv4+IPv6 support.
 pub struct HickoryDnsResolver(Arc<hickory_resolver::TokioResolver>);
 
 impl HickoryDnsResolver {
@@ -58,6 +60,7 @@ impl reqwest::dns::Resolve for HickoryDnsResolver {
     }
 }
 
+/// Parse `Retry-After` or `retry-after-ms` header values into a `Duration`.
 fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
     if let Some(val) = headers.get("retry-after-ms")
         && let Ok(s) = val.to_str()
@@ -82,6 +85,10 @@ fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
     None
 }
 
+/// Calculate the delay before the next retry attempt.
+///
+/// Uses `Retry-After` header if present (capped at 60 seconds), otherwise
+/// applies exponential backoff with jitter.
 fn calculate_retry_timeout(
     headers: Option<&reqwest::header::HeaderMap>,
     attempt: u32,
@@ -89,7 +96,7 @@ fn calculate_retry_timeout(
     if let Some(h) = headers
         && let Some(after) = parse_retry_after(h)
     {
-        if after > Duration::from_secs(60) {
+        if after > Duration::from_mins(1) {
             return None;
         }
         return Some(after);
@@ -102,6 +109,12 @@ fn calculate_retry_timeout(
     Some(base.mul_f64(jitter))
 }
 
+/// A `reqwest_middleware` middleware that retries failed requests with
+/// exponential backoff and jitter.
+///
+/// Retries on: timeout (408), too-many-requests (429), server errors (5xx),
+/// and connection errors. Uses `Retry-After` / `retry-after-ms` headers
+/// when available.
 pub struct RetryMiddleware;
 
 #[async_trait::async_trait]
@@ -156,10 +169,14 @@ impl reqwest_middleware::Middleware for RetryMiddleware {
     }
 }
 
-pub fn create_reqwest_client<R: reqwest::dns::Resolve + 'static>(
+/// Build a `reqwest` client with retry middleware and custom DNS resolver.
+pub fn create_reqwest_client<R>(
     config: &Config,
     dns_resolver: Arc<R>,
-) -> reqwest::Result<reqwest_middleware::ClientWithMiddleware> {
+) -> reqwest::Result<reqwest_middleware::ClientWithMiddleware>
+where
+    R: reqwest::dns::Resolve + 'static,
+{
     let mut builder = reqwest::ClientBuilder::new()
         .user_agent(&config.scraping.user_agent)
         .timeout(config.scraping.timeout)
@@ -176,4 +193,89 @@ pub fn create_reqwest_client<R: reqwest::dns::Resolve + 'static>(
         .build();
 
     Ok(client_with_middleware)
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::default_numeric_fallback,
+    clippy::inline_modules,
+    clippy::map_with_unused_argument_over_ranges,
+    clippy::redundant_test_prefix,
+    clippy::unwrap_used
+)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_retry_after_seconds() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::RETRY_AFTER,
+            reqwest::header::HeaderValue::from_static("30"),
+        );
+        let dur = parse_retry_after(&headers);
+        assert_eq!(dur, Some(Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn test_parse_retry_after_ms() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::HeaderName::from_static("retry-after-ms"),
+            reqwest::header::HeaderValue::from_static("500"),
+        );
+        let dur = parse_retry_after(&headers);
+        assert_eq!(dur, Some(Duration::from_millis(500)));
+    }
+
+    #[test]
+    fn test_parse_retry_after_missing() {
+        let headers = reqwest::header::HeaderMap::new();
+        assert!(parse_retry_after(&headers).is_none());
+    }
+
+    #[test]
+    fn test_calculate_retry_timeout_uses_header() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::RETRY_AFTER,
+            reqwest::header::HeaderValue::from_static("5"),
+        );
+        let dur = calculate_retry_timeout(Some(&headers), 0);
+        assert_eq!(dur, Some(Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn test_calculate_retry_timeout_caps_at_60s() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::RETRY_AFTER,
+            reqwest::header::HeaderValue::from_static("120"),
+        );
+        let dur = calculate_retry_timeout(Some(&headers), 0);
+        assert!(dur.is_none());
+    }
+
+    #[test]
+    fn test_calculate_retry_timeout_exponential_backoff() {
+        let dur0 = calculate_retry_timeout(None, 0).unwrap();
+        let dur1 = calculate_retry_timeout(None, 1).unwrap();
+        let dur2 = calculate_retry_timeout(None, 2).unwrap();
+        // Each should be larger than the previous
+        assert!(dur1 > dur0);
+        assert!(dur2 > dur1);
+        // Should not exceed max
+        assert!(dur2 <= MAX_RETRY_DELAY);
+    }
+
+    #[test]
+    fn test_calculate_retry_timeout_jitter() {
+        // Multiple calls should produce different values due to jitter
+        let durs: Vec<_> = (0..10)
+            .map(|_| calculate_retry_timeout(None, 0).unwrap())
+            .collect();
+        let unique = durs.iter().collect::<std::collections::HashSet<_>>();
+        // At least 2 unique values (jitter range is 0.75x to 1.0x of base)
+        assert!(unique.len() >= 2);
+    }
 }

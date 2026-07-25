@@ -11,28 +11,35 @@ use crate::{
     HashMap, http::BasicAuth, proxy::ProxyType, raw_config, utils::is_docker,
 };
 
+/// Application directory name used for cache and data paths.
 pub const APP_DIRECTORY_NAME: &str = "proxy_spider";
 
+/// Response format for httpbin-style check URLs that return `{"origin": "<ip>"}`.
 #[derive(serde::Deserialize)]
 pub struct HttpbinResponse {
     pub origin: String,
 }
 
+/// A proxy source (URL with optional authentication and custom headers).
 pub struct Source {
     pub url: String,
     pub basic_auth: Option<BasicAuth>,
     pub headers: Option<HashMap<String, String>>,
 }
 
+/// Configuration for the scraping phase: timeouts, limits, and source URLs.
 pub struct ScrapingConfig {
     pub max_proxies_per_source: usize,
     pub timeout: Duration,
     pub connect_timeout: Duration,
     pub proxy: Option<url::Url>,
     pub user_agent: String,
+    /// Rate limit delay in milliseconds between scraping requests to each source.
+    pub rate_limit_ms: u64,
     pub sources: HashMap<ProxyType, Vec<Arc<Source>>>,
 }
 
+/// Configuration for the proxy checking/verification phase.
 pub struct CheckingConfig {
     pub check_url: Option<url::Url>,
     pub max_concurrent_checks: usize,
@@ -41,16 +48,19 @@ pub struct CheckingConfig {
     pub user_agent: String,
 }
 
+/// Plain-text output configuration.
 pub struct TxtOutputConfig {
     pub enabled: bool,
 }
 
+/// JSON output configuration with optional ASN/geolocation metadata.
 pub struct JsonOutputConfig {
     pub enabled: bool,
     pub include_asn: bool,
     pub include_geolocation: bool,
 }
 
+/// Output configuration: path, sorting, and format settings.
 pub struct OutputConfig {
     pub path: PathBuf,
     pub sort_by_speed: bool,
@@ -58,6 +68,7 @@ pub struct OutputConfig {
     pub json: JsonOutputConfig,
 }
 
+/// Top-level application configuration.
 pub struct Config {
     pub debug: bool,
     pub scraping: ScrapingConfig,
@@ -139,6 +150,7 @@ impl Config {
                 ),
                 proxy: raw_config.scraping.proxy,
                 user_agent: raw_config.scraping.user_agent,
+                rate_limit_ms: raw_config.scraping.rate_limit_ms,
                 sources: [
                     (ProxyType::Http, raw_config.scraping.http),
                     (ProxyType::Socks4, raw_config.scraping.socks4),

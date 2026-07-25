@@ -243,3 +243,142 @@ where
         .map(move |proxy| proxy.to_string(include_protocol))
         .join("\n")
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::get_unwrap,
+    clippy::inline_modules,
+    clippy::redundant_test_prefix,
+    clippy::unwrap_used
+)]
+mod tests {
+    use super::*;
+    use crate::proxy::ProxyType;
+    use crate::config;
+    use foldhash::HashMapExt as _;
+
+    fn make_proxy(
+        protocol: ProxyType,
+        host: &str,
+        port: u16,
+        timeout: Option<Duration>,
+    ) -> Proxy {
+        Proxy {
+            protocol,
+            host: host.into(),
+            port,
+            username: None,
+            password: None,
+            timeout,
+            exit_ip: None,
+        }
+    }
+
+    #[test]
+    fn test_compare_timeout_some_first() {
+        let a = make_proxy(ProxyType::Http, "1.2.3.4", 80, Some(Duration::from_millis(100)));
+        let b = make_proxy(ProxyType::Http, "5.6.7.8", 80, Some(Duration::from_millis(200)));
+        assert_eq!(compare_timeout(&a, &b), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_timeout_none_sorts_last() {
+        let a = make_proxy(ProxyType::Http, "1.2.3.4", 80, Some(Duration::from_millis(100)));
+        let b = make_proxy(ProxyType::Http, "5.6.7.8", 80, None);
+        assert_eq!(compare_timeout(&a, &b), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_natural_ipv4() {
+        let a = make_proxy(ProxyType::Http, "10.0.0.1", 80, None);
+        let b = make_proxy(ProxyType::Http, "10.0.0.2", 80, None);
+        assert_eq!(compare_natural(&a, &b), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_natural_ipv4_vs_domain() {
+        let a = make_proxy(ProxyType::Http, "10.0.0.1", 80, None);
+        let b = make_proxy(ProxyType::Http, "proxy.example.com", 80, None);
+        assert_eq!(compare_natural(&a, &b), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_natural_same_host_diff_port() {
+        let a = make_proxy(ProxyType::Http, "1.2.3.4", 80, None);
+        let b = make_proxy(ProxyType::Http, "1.2.3.4", 8080, None);
+        assert_eq!(compare_natural(&a, &b), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_natural_diff_protocol() {
+        let a = make_proxy(ProxyType::Http, "1.2.3.4", 80, None);
+        let b = make_proxy(ProxyType::Socks5, "1.2.3.4", 80, None);
+        assert_eq!(compare_natural(&a, &b), Ordering::Less);
+    }
+
+    #[test]
+    fn test_create_proxy_list_str_with_protocol() {
+        let proxies = vec![
+            make_proxy(ProxyType::Http, "1.2.3.4", 80, None),
+            make_proxy(ProxyType::Socks5, "5.6.7.8", 1080, None),
+        ];
+        let result = create_proxy_list_str(&proxies, true);
+        assert_eq!(result, "http://1.2.3.4:80\nsocks5://5.6.7.8:1080");
+    }
+
+    #[test]
+    fn test_create_proxy_list_str_without_protocol() {
+        let proxies = vec![
+            make_proxy(ProxyType::Http, "1.2.3.4", 80, None),
+        ];
+        let result = create_proxy_list_str(&proxies, false);
+        assert_eq!(result, "1.2.3.4:80");
+    }
+
+    #[test]
+    fn test_group_proxies() {
+        let cfg = config::Config {
+            debug: false,
+            scraping: config::ScrapingConfig {
+                sources: {
+                    let mut m = HashMap::new();
+                    m.insert(ProxyType::Http, Vec::new());
+                    m.insert(ProxyType::Socks5, Vec::new());
+                    m
+                },
+                max_proxies_per_source: 0,
+                timeout: Duration::from_secs(30),
+                connect_timeout: Duration::from_secs(5),
+                proxy: None,
+                user_agent: String::new(),
+                rate_limit_ms: 0,
+            },
+            checking: config::CheckingConfig {
+                check_url: None,
+                max_concurrent_checks: 10,
+                timeout: Duration::from_secs(30),
+                connect_timeout: Duration::from_secs(5),
+                user_agent: String::new(),
+            },
+            output: config::OutputConfig {
+                path: std::path::PathBuf::from("./out"),
+                sort_by_speed: false,
+                txt: config::TxtOutputConfig { enabled: true },
+                json: config::JsonOutputConfig {
+                    enabled: false,
+                    include_asn: false,
+                    include_geolocation: false,
+                },
+            },
+        };
+        let proxies = vec![
+            make_proxy(ProxyType::Http, "1.2.3.4", 80, None),
+            make_proxy(ProxyType::Socks5, "5.6.7.8", 1080, None),
+            make_proxy(ProxyType::Http, "9.10.11.12", 8080, None),
+        ];
+        let groups = group_proxies(&cfg, &proxies);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups.get(&ProxyType::Http).unwrap().len(), 2);
+        assert_eq!(groups.get(&ProxyType::Socks5).unwrap().len(), 1);
+    }
+}
