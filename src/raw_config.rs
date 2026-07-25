@@ -115,10 +115,49 @@ pub struct ScrapingConfig {
     pub socks5: ScrapingProtocolConfig,
 }
 
+/// Defines how to extract the exit IP from a check URL response.
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "snake_case", tag = "type")]
+pub enum CheckSchema {
+    /// Extract IP from a JSON field (e.g. `{"origin": "1.2.3.4"}`).
+    /// The `path` is a dot-separated key path like `"origin"` or
+    /// `"data.ip"`.
+    Json {
+        /// Dot-separated path to the field containing the IP string.
+        path: String,
+    },
+    /// The response body is the raw IP address (e.g. `api.ipify.org`).
+    PlainText,
+    /// Extract IP using a regex with a `host` capture group.
+    Regex {
+        /// Regex pattern with a `host` named capture group.
+        pattern: String,
+    },
+    /// No IP extraction — only check connectivity / response status.
+    None,
+}
+
+impl CheckSchema {
+    /// Infer a sensible default schema from a check URL.
+    #[must_use]
+    pub fn from_url(url: &url::Url) -> Self {
+        let host = url.host_str().unwrap_or("");
+        if host.contains("httpbin") || host.contains("postman") {
+            Self::Json { path: "origin".into() }
+        } else if host.contains("ipify") {
+            Self::PlainText
+        } else {
+            Self::None
+        }
+    }
+}
+
 #[derive(serde::Deserialize)]
 pub struct CheckingConfig {
     #[serde(deserialize_with = "validate_http_url")]
     pub check_url: Option<url::Url>,
+    #[serde(default)]
+    pub check_schema: Option<CheckSchema>,
     pub max_concurrent_checks: NonZero<usize>,
     #[serde(deserialize_with = "validate_positive_f64")]
     pub timeout: f64,

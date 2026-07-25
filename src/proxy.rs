@@ -8,10 +8,7 @@ use std::{
 
 use color_eyre::eyre::{WrapErr as _, eyre};
 
-use crate::{
-    config::{Config, HttpbinResponse},
-    parsers::parse_ipv4,
-};
+use crate::config::{Config, extract_exit_ip};
 
 /// The type of proxy protocol.
 #[derive(
@@ -137,14 +134,8 @@ impl Proxy {
                 .error_for_status()?;
             drop(client);
             self.timeout = Some(start.elapsed());
-            self.exit_ip = response.text().await.map_or(None, |text| {
-                if let Ok(httpbin) =
-                    serde_json::from_str::<HttpbinResponse>(&text)
-                {
-                    parse_ipv4(&httpbin.origin)
-                } else {
-                    parse_ipv4(&text)
-                }
+            self.exit_ip = response.text().await.ok().and_then(|text| {
+                extract_exit_ip(&config.checking.check_schema, &text)
             });
         }
         Ok(())

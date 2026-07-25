@@ -347,6 +347,7 @@ mod tests {
             },
             checking: config::CheckingConfig {
                 check_url: None,
+                check_schema: crate::raw_config::CheckSchema::None,
                 max_concurrent_checks: 10,
                 timeout: Duration::from_secs(30),
                 connect_timeout: Duration::from_secs(5),

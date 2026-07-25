@@ -32,6 +32,28 @@ rate_limit_ms = 0
 #   "" (empty)                 — skip checking entirely (scrape only).
 check_url = "https://api.ipify.org"
 
+# How to extract the exit IP from the check URL response.
+# If omitted, the schema is inferred from the check_url hostname:
+#   *httpbin*, *postman*  → json { path = "origin" }
+#   *ipify*              → plain_text
+#   anything else         → none
+#
+# Available schemas:
+#   [check_schema]
+#   type = "json"
+#   path = "origin"                          # dot-separated key path
+#
+#   [check_schema]
+#   type = "plain_text"                      # raw IP in body
+#
+#   [check_schema]
+#   type = "regex"
+#   pattern = "(?P<host>[0-9.]+)"            # regex with "host" capture group
+#
+#   [check_schema]
+#   type = "none"                            # connectivity only
+# check_schema = { type = "plain_text" }
+
 # Maximum concurrent proxy checks. Tune based on available RAM/network capacity
 # and OS file-descriptor limits (the tool will warn and cap automatically).
 max_concurrent_checks = 1024
@@ -78,32 +100,123 @@ include_geolocation = true
 [scraping.http]
 enabled = true
 urls = [
+    # API / structured sources
     "https://api.proxyscrape.com/v3/free-proxy-list/get?request=getproxies&protocol=http",
     "https://api.proxyscrape.com/v3/free-proxy-list/get?request=getproxies&protocol=https",
+
+    # gfpcom — largest aggregated list (~480K HTTP, ~445K HTTPS), updated hourly
+    "https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/http.txt",
+    "https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/https.txt",
+
+    # komutan234 — updated every 2 minutes
+    "https://raw.githubusercontent.com/komutan234/Proxy-List-Free/main/proxies/http.txt",
+
+    # monosans — reliable, updated hourly
+    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+
+    # proxifly
     "https://raw.githubusercontent.com/proxifly/free-proxy-list/refs/heads/main/proxies/protocols/http/data.txt",
     "https://raw.githubusercontent.com/proxifly/free-proxy-list/refs/heads/main/proxies/protocols/https/data.txt",
+
+    # roosterkid
     "https://raw.githubusercontent.com/roosterkid/openproxylist/refs/heads/main/HTTPS_RAW.txt",
-    "https://raw.githubusercontent.com/sunny9577/proxy-scraper/refs/heads/master/generated/http_proxies.txt",
+
+    # TheSpeedX
     "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/refs/heads/master/http.txt",
+
+    # BlackSnowDot — updated every minute
+    "https://raw.githubusercontent.com/BlackSnowDot/proxylist-update-every-minute/main/http.txt",
+    "https://raw.githubusercontent.com/BlackSnowDot/proxylist-update-every-minute/main/https.txt",
+
+    # sunny9577
+    "https://raw.githubusercontent.com/sunny9577/proxy-scraper/refs/heads/master/generated/http_proxies.txt",
+
+    # zeynoxwashere
+    "https://raw.githubusercontent.com/zeynoxwashere/proxy-list/main/http.txt",
+
+    # mmpx12
+    "https://raw.githubusercontent.com/mmpx12/proxy-list/master/http.txt",
+
+    # mertguvencli
+    "https://raw.githubusercontent.com/mertguvencli/http-proxy-list/main/proxy-list/data.txt",
+
+    # Mixed-protocol sources (parser auto-detects each entry's protocol)
+    "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies.txt",
+    "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
+    "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/proxy.txt",
 ]
 
 [scraping.socks4]
 enabled = true
 urls = [
     "https://api.proxyscrape.com/v3/free-proxy-list/get?request=getproxies&protocol=socks4",
+
+    # gfpcom — ~466K SOCKS4, updated hourly
+    "https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/socks4.txt",
+
+    # komutan234 — updated every 2 minutes
+    "https://raw.githubusercontent.com/komutan234/Proxy-List-Free/main/proxies/socks4.txt",
+
+    # monosans
+    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks4.txt",
+
+    # proxifly
     "https://raw.githubusercontent.com/proxifly/free-proxy-list/refs/heads/main/proxies/protocols/socks4/data.txt",
+
+    # roosterkid
     "https://raw.githubusercontent.com/roosterkid/openproxylist/refs/heads/main/SOCKS4_RAW.txt",
-    "https://raw.githubusercontent.com/sunny9577/proxy-scraper/refs/heads/master/generated/socks4_proxies.txt",
+
+    # TheSpeedX
     "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/refs/heads/master/socks4.txt",
+
+    # sunny9577
+    "https://raw.githubusercontent.com/sunny9577/proxy-scraper/refs/heads/master/generated/socks4_proxies.txt",
+
+    # zeynoxwashere
+    "https://raw.githubusercontent.com/zeynoxwashere/proxy-list/main/socks4.txt",
+
+    # mmpx12
+    "https://raw.githubusercontent.com/mmpx12/proxy-list/master/socks4.txt",
 ]
 
 [scraping.socks5]
 enabled = true
 urls = [
     "https://api.proxyscrape.com/v3/free-proxy-list/get?request=getproxies&protocol=socks5",
+
+    # gfpcom — ~478K SOCKS5, updated hourly
+    "https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/socks5.txt",
+
+    # komutan234 — updated every 2 minutes
+    "https://raw.githubusercontent.com/komutan234/Proxy-List-Free/main/proxies/socks5.txt",
+
+    # monosans
+    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt",
+
+    # hookzof
     "https://raw.githubusercontent.com/hookzof/socks5_list/refs/heads/master/proxy.txt",
+
+    # proxifly
     "https://raw.githubusercontent.com/proxifly/free-proxy-list/refs/heads/main/proxies/protocols/socks5/data.txt",
+
+    # roosterkid
     "https://raw.githubusercontent.com/roosterkid/openproxylist/refs/heads/main/SOCKS5_RAW.txt",
-    "https://raw.githubusercontent.com/sunny9577/proxy-scraper/refs/heads/master/generated/socks5_proxies.txt",
+
+    # TheSpeedX
     "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/refs/heads/master/socks5.txt",
+
+    # sunny9577
+    "https://raw.githubusercontent.com/sunny9577/proxy-scraper/refs/heads/master/generated/socks5_proxies.txt",
+
+    # zeynoxwashere
+    "https://raw.githubusercontent.com/zeynoxwashere/proxy-list/main/socks5.txt",
+
+    # mmpx12
+    "https://raw.githubusercontent.com/mmpx12/proxy-list/master/socks5.txt",
+
+    # BlackSnowDot — mixed socks, updated every minute
+    "https://raw.githubusercontent.com/BlackSnowDot/proxylist-update-every-minute/main/socks.txt",
+
+    # UptimerBot
+    "https://raw.githubusercontent.com/UptimerBot/proxy-list/main/proxies/socks5.txt",
 ]

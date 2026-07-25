@@ -8,18 +8,12 @@ use std::{
 use color_eyre::eyre::{OptionExt as _, WrapErr as _};
 
 use crate::{
-    HashMap, http::BasicAuth, proxy::ProxyType, raw_config, utils::is_docker,
+    HashMap, http::BasicAuth, proxy::ProxyType, raw_config,
+    raw_config::CheckSchema, utils::is_docker,
 };
 
 /// Application directory name used for cache and data paths.
 pub const APP_DIRECTORY_NAME: &str = "proxy_spider";
-
-/// Response format for httpbin-style check URLs that return `{"origin":
-/// "<ip>"}`.
-#[derive(serde::Deserialize)]
-pub struct HttpbinResponse {
-    pub origin: String,
-}
 
 /// A proxy source (URL with optional authentication and custom headers).
 pub struct Source {
@@ -44,10 +38,33 @@ pub struct ScrapingConfig {
 /// Configuration for the proxy checking/verification phase.
 pub struct CheckingConfig {
     pub check_url: Option<url::Url>,
+    pub check_schema: CheckSchema,
     pub max_concurrent_checks: usize,
     pub timeout: Duration,
     pub connect_timeout: Duration,
     pub user_agent: String,
+}
+
+/// Extract the exit IP from a check URL response body according to the schema.
+pub fn extract_exit_ip(schema: &CheckSchema, body: &str) -> Option<String> {
+    match schema {
+        CheckSchema::Json { path } => {
+            let value: serde_json::Value = serde_json::from_str(body).ok()?;
+            let mut current = value;
+            for key in path.split('.') {
+                current = current.get(key)?.clone();
+            }
+            let ip_str = current.as_str()?;
+            crate::parsers::parse_ipv4(ip_str)
+        }
+        CheckSchema::PlainText => crate::parsers::parse_ipv4(body.trim()),
+        CheckSchema::Regex { pattern } => {
+            let re = fancy_regex::Regex::new(pattern).ok()?;
+            let captures = re.captures(body).ok()??;
+            captures.name("host").map(|m| m.as_str().to_owned())
+        }
+        CheckSchema::None => None,
+    }
 }
 
 /// Plain-text output configuration.
@@ -178,7 +195,19 @@ impl Config {
                 .collect(),
             },
             checking: CheckingConfig {
-                check_url: raw_config.checking.check_url,
+                check_url: raw_config.checking.check_url.clone(),
+                check_schema: raw_config
+                    .checking
+                    .check_schema
+                    .clone()
+                    .or_else(|| {
+                        raw_config
+                            .checking
+                            .check_url
+                            .as_ref()
+                            .map(CheckSchema::from_url)
+                    })
+                    .unwrap_or(CheckSchema::None),
                 max_concurrent_checks,
                 timeout: Duration::from_secs_f64(raw_config.checking.timeout),
                 connect_timeout: Duration::from_secs_f64(
